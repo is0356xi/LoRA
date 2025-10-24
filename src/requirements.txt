@@ -1,0 +1,10 @@
+# requirements.txt
+transformers>=4.34.0
+datasets
+accelerate
+peft
+bitsandbytes
+sentencepiece
+tokenizers
+evaluate
+torchinfo
