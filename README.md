@@ -67,8 +67,10 @@ Tiny model forward produced shape: torch.Size([2, 10])
 ここでは、[meta-llama/Llama-3.2-1B](https://huggingface.co/meta-llama/Llama-3.2-1B)を利用する。
 meta-llama/Llama-3.2-*は、[このリポジトリ](https://huggingface.co/collections/meta-llama/metas-llama-32-language-models-and-evals-675bfd70e574a62dd0e40586)に対する利用申請が必要。
 
-利用申請が通ったら、HuggingFace上から、```Profile->Access Token->Create new token```で新しいトークンを作る。
+また、HuggingFaceへのアクセストークンが必要となる。
+HuggingFace上から、```Profile->Access Token->Create new token```で新しいトークンを作る。
 このとき、```Read```というタブに移動し、読み取り権限で作成する。
+
 
 環境変数HF_TOKENにトークンを設定し、docker runする時にコンテナ内の環境変数として渡す。
 ソースコード側で環境変数```HUGGINGFACE_HUB_TOKEN```を見に行くようにすることで、
@@ -81,13 +83,15 @@ tokenizer = AutoTokenizer.from_pretrained(
 )
 ```
 
+
 まずは、データセットのダウンロードとデータのチェックを行う。
 
 ```sh
 # windows
 $env:HF_TOKEN="hf_xxx"
+$env:DATA_DIR="/D"
 
-docker run --rm --gpus all -e HUGGINGFACE_HUB_TOKEN=$env:HF_TOKEN -v /D:/ssd -v ${PWD}:/workspace -w /workspace lora-finetuning-benchmark:latest python scripts/download_and_check_dolly.py --output_dir /ssd/dolly15k/raw
+docker run --rm --gpus all -e HUGGINGFACE_HUB_TOKEN=$env:HF_TOKEN -v ${env:DATA_DIR}:/data -v ${PWD}:/workspace -w /workspace lora-finetuning-benchmark:latest python scripts/download_and_check_dolly.py --output_dir /data/dolly15k/raw
 ```
 
 以下のような出力が得られれば、データセットのダウンロードとチェックは完了。
@@ -139,17 +143,6 @@ Saving the dataset (1/1 shards): 100%|██████████| 15011/1501
 Done. Saved at /ssd/dolly15k/raw
 ```
 
-
-代替として、完全オープンな[EleutherAI/gpt-neo-1.3B](https://huggingface.co/EleutherAI/gpt-neo-1.3B)を利用し、申請が通ったらLlamaに置き変えてもいい。
-
-
-※linuxの場合は、$(pwd)とする。
-
-```sh
-# gpt-neo-1.3B
-docker run --rm --gpus all -e HUGGINGFACE_HUB_TOKEN=$env:HF_TOKEN -v /D:/ssd -v ${PWD}:/workspace -w /workspace lora-finetuning-benchmark:latest python scripts/preprocess_dolly.py --model_name EleutherAI/gpt-neo-1.3B --output_dir /ssd/dolly15k/processed
-```
-
 -------
 
 # 3. データの前処理
@@ -166,8 +159,18 @@ docker run --rm --gpus all -e HUGGINGFACE_HUB_TOKEN=$env:HF_TOKEN -v /D:/ssd -v 
 処理を実行する。
 
 ```sh
-docker run --rm --gpus all -e HUGGINGFACE_HUB_TOKEN=$env:HF_TOKEN -v /D:/ssd -v ${PWD}:/workspace -w /workspace lora-finetuning-benchmark:latest python scripts/preprocess_dolly.py --model_name meta-llama/Llama-3.2-1B --input_dir /ssd/dolly15k/raw --output_dir /ssd/dolly15k/processed
+docker run --rm --gpus all -e HUGGINGFACE_HUB_TOKEN=$env:HF_TOKEN -v ${env:DATA_DIR}:/data -v ${PWD}:/workspace -w /workspace lora-finetuning-benchmark:latest python scripts/preprocess_dolly.py --model_name meta-llama/Llama-3.2-1B --input_dir /data/dolly15k/raw --output_dir /data/dolly15k/processed
 ```
+
+代替として、完全オープンな[EleutherAI/gpt-neo-1.3B](https://huggingface.co/EleutherAI/gpt-neo-1.3B)を利用し、申請が通ったらLlamaに置き変えてもいい。
+
+※linuxの場合は、$(pwd)とする。
+
+```sh
+# gpt-neo-1.3B
+docker run --rm --gpus all -e HUGGINGFACE_HUB_TOKEN=$env:HF_TOKEN -v ${env:DATA_DIR}:/data -v ${PWD}:/workspace -w /workspace lora-finetuning-benchmark:latest python scripts/preprocess_dolly.py --model_name EleutherAI/gpt-neo-1.3B --input_dir /data/dolly15k/raw --output_dir /data/dolly15k/processed
+```
+
 
 以下のような出力が得られれば、前処理済みのデータが指定フォルダに保存されている。
 
@@ -191,7 +194,7 @@ Done. Saved at /ssd/dolly15k/processed
 作成したデータが期待通りになっているかチェックする。
 
 ```sh
-docker run --rm --gpus all -e HUGGINGFACE_HUB_TOKEN=$env:HF_TOKEN -v /D:/ssd -v ${PWD}:/workspace -w /workspace lora-finetuning-benchmark:latest python scripts/check_dataset.py
+docker run --rm --gpus all -e HUGGINGFACE_HUB_TOKEN=$env:HF_TOKEN -v ${env:DATA_DIR}:/ssd -v ${PWD}:/workspace -w /workspace lora-finetuning-benchmark:latest python scripts/check_dataset.py
 ```
 
 以下のような出力が得られれば、チェック完了。
@@ -265,5 +268,22 @@ accelerate configuration saved at /root/.cache/huggingface/accelerate/default_co
 # 5. 学習プロセスのスモークテストを実施
 
 ```sh
-docker run --rm --gpus all -e HUGGINGFACE_HUB_TOKEN=$env:HF_TOKEN -v ${pwd}:/workspace -v ${HOME}/.cache:/root/.cache -v /D:/ssd -w /workspace lora-finetuning-benchmark:latest accelerate launch scripts/train.py --dataset_dir="/ssd/dolly15k/processed" --max_train_steps=16
+docker run --rm --gpus all -e HUGGINGFACE_HUB_TOKEN=$env:HF_TOKEN -v ${pwd}:/workspace -v ${HOME}/.cache:/root/.cache -v ${env:DATA_DIR}:/data -w /workspace lora-finetuning-benchmark:latest accelerate launch scripts/train.py --dataset_dir="/data/dolly15k/processed" --max_train_steps=16
+```
+
+以下のように問題なく学習プロセスが走ればOK。
+
+```sh
+Dataset loaded: DatasetDict({
+    train: Dataset({
+        features: ['input_ids', 'attention_mask', 'labels'],
+        num_rows: 13509
+    })
+    test: Dataset({
+        features: ['input_ids', 'attention_mask', 'labels'],
+        num_rows: 1502
+    })
+})
+trainable params: 851,968 || all params: 1,236,666,368 || trainable%: 0.0689
+loss: 1.6846: 100%|██████████| 16/16 [00:38<00:00,  2.42s/it]
 ```
